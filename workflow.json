@@ -1,0 +1,272 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "420a816e-d37e-4dc0-ab39-c860fcebe85d",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        0
+      ],
+      "webhookId": "content-script-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "rCIvy6QECsAhJeJJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-topic",
+              "name": "topic",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-chat-id",
+              "name": "chat_id",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6dd9d65c-8609-4765-b448-2402bf50c607",
+      "name": "Extract Topic",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "a59f803206f6379ee97ba01a49420136cde6061f"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.topic }} viral content ideas 2026 trending"
+            },
+            {
+              "name": "num",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "58c8ea54-271d-4964-950b-dbd8c77f0449",
+      "name": "Web Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract topic and chat_id from previous nodes\nconst topic = $('Extract Topic').first().json.topic;\nconst chat_id = $('Extract Topic').first().json.chat_id;\n\n// Get search results\nconst searchData = $input.first().json;\n\n// Extract snippets from organic results\nlet snippets = '';\nif (searchData.organic && searchData.organic.length > 0) {\n  snippets = searchData.organic\n    .slice(0, 5)\n    .map((r, i) => `${i + 1}. ${r.title}: ${r.snippet || ''}`)\n    .join('\\n');\n} else {\n  snippets = 'No search results found. Use general knowledge about this topic.';\n}\n\nreturn [{\n  json: {\n    topic: topic,\n    chat_id: chat_id,\n    research: snippets\n  }\n}];"
+      },
+      "id": "2d3509d4-e273-4592-89dd-b85c84239d6c",
+      "name": "Prepare Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chat_id = $('Prepare Research').first().json.chat_id;\nconst topic = $('Prepare Research').first().json.topic;\n\n// LLM Chain returns { text: \"...\" }\nlet content = $input.first().json.text;\n\n// Clean up markdown if present\ncontent = content.replace(/```json/gi, '').replace(/```/g, '').trim();\n\n// Parse JSON\nlet scripts;\ntry {\n  scripts = JSON.parse(content);\n} catch (e) {\n  return [{\n    json: {\n      chat_id: chat_id,\n      text: `⚠️ Could not parse scripts for \"${topic}\". Raw response:\\n\\n${content}`\n    }\n  }];\n}\n\n// Format each script as telegram message\nreturn scripts.map((s) => ({\n  json: {\n    chat_id: chat_id,\n    text: `📝 *Script ${s.script_number}/3*\\n🎯 *Angle:* ${s.angle}\\n🪝 *Hook:* _${s.hook}_\\n\\n${s.script}\\n\\n━━━━━━━━━━━━━━━\\n✅ Ready to record!`\n  }\n}));"
+      },
+      "id": "1a025ab7-3005-4033-bbb2-00f67b95da22",
+      "name": "Parse Scripts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "ef0600fa-88d6-4581-b565-7101f9e1ab4c",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        0
+      ],
+      "webhookId": "552e4d13-0108-40d7-a17e-051dc1f0b86a",
+      "credentials": {
+        "telegramApi": {
+          "id": "rCIvy6QECsAhJeJJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a viral short-form content scriptwriter \nfor Instagram Reels and YouTube Shorts.\n\nTopic: {{ $('Prepare Research').first().json.topic }}\n\nResearch context:\n{{ $('Prepare Research').first().json.research }}\n\nWrite exactly 3 different 60-second reel scripts.\n\nRules:\n- Each script must have a different angle\n- Hook grabs attention in first 3 seconds\n- Body delivers value in 45 seconds\n- CTA is clear in last 10 seconds\n- Conversational tone, not formal\n\nReturn ONLY this JSON array, nothing else:\n[\n  {\"script_number\": 1, \"angle\": \"angle here\", \"hook\": \"hook line\", \"script\": \"full script\"},\n  {\"script_number\": 2, \"angle\": \"angle here\", \"hook\": \"hook line\", \"script\": \"full script\"},\n  {\"script_number\": 3, \"angle\": \"angle here\", \"hook\": \"hook line\", \"script\": \"full script\"}\n]",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        848,
+        0
+      ],
+      "id": "356e77af-32d3-49b7-85b7-c31c0f194daf",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        848,
+        176
+      ],
+      "id": "f2c5f117-7376-4f28-8824-54bda309d40b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "2vyLTE8yaIJtaaSc",
+          "name": "OpenAi account 5"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Topic": {
+      "main": [
+        [
+          {
+            "node": "Web Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Search": {
+      "main": [
+        [
+          {
+            "node": "Prepare Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Research": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Scripts": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Parse Scripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bd6871a4a2fc266d0b692ce5c61316479a1bd2c1f9ba6625c50ae6055bd706d5"
+  }
+}
